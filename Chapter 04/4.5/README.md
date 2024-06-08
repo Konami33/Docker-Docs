@@ -10,7 +10,27 @@ This scenario demonstrates the process of sharing files between multiple Docker 
 2. **Docker Volume Example**: We then perform the same operation using Docker volumes, eliminating host-specific dependencies.
 3. **Anonymous Volumes and `--volumes-from` Flag**: Finally, we demonstrate using anonymous volumes and the `--volumes-from` flag to dynamically share volumes between multiple containers.
 
-## 1. Log sharing using Bind Mount:
+## Initial setup:
+First we will create a docker image that performs simple file writting application in a Docker container. Here’s how you can create your own:
+
+1. Create a Dockerfile
+```sh
+FROM alpine:latest
+RUN apk add --no-cache bash
+CMD ["sh", "-c", "while true; do date >> /data/logA; sleep 1; done"]
+```
+2. Build the Docker image
+```sh
+docker build -t my_writer .
+```
+Now we have a Docker image that writes the current date to a file named `logA` in
+the `/data` directory every second. We can also verify the docker image creation by
+
+```sh
+docker images
+```
+
+## Log sharing using Bind Mount:
 
 **Setup a Known Location on Host**:
 ```sh
@@ -25,8 +45,10 @@ mkdir ${LOG_SRC}
 ```sh
 docker run --name plath -d \
     --mount type=bind,src=${LOG_SRC},dst=/data \
-    dockerinaction/ch4_writer_a
+    my_writer
 ```
+
+![](./images/Screenshot%202024-06-09%20020704.png)
 
 **Create and Run a Log-Reading Container and use `bind mounts` to share**:
 ```sh
@@ -58,10 +80,14 @@ cat ${LOG_SRC}/logA
 - **cat**: This command displays the contents of the file.
 - **${LOG_SRC}/logA**: Path to the log file on the host.
 
+![](./images/Screenshot%202024-06-09%20020912.png)
+
 **Stop the Log-Writing Container**:
 ```sh
 docker rm -f plath
 ```
+
+![](./images/Screenshot%202024-06-09%20020930.png)
 
 ## 2. Log sharing using Docker Volume: 
 
@@ -71,6 +97,7 @@ Now we will achieve the same result using docker volume.
 ```sh
 docker volume create --driver local logging-example
 ```
+![](./images/Screenshot%202024-06-09%20021022.png)
 
 - **docker volume create**: This command creates a new Docker volume.
 - **--driver local**: This specifies the volume driver to use. "local" is the default driver.
@@ -80,7 +107,7 @@ docker volume create --driver local logging-example
 ```sh
 docker run --name plath -d \
     --mount type=volume,src=logging-example,dst=/data \
-    dockerinaction/ch4_writer_a
+    my_writer
 ```
 
 **Create and Run a Log-Reading Container**:
@@ -99,8 +126,11 @@ docker run --rm \
 
 **View Logs from Host**:
 ```sh
-cat "$(docker volume inspect --format "{{json .Mountpoint}}" logging-example)"/logA
+cat /var/lib/docker/volumes/logging-example/_data/logA
 ```
+
+![](./images/Screenshot%202024-06-09%20022420.png)
+
 
 **Stop the Log-Writing Container**:
 ```sh
@@ -127,6 +157,8 @@ docker run --name knuth \
     echo "Knuth collection created"
 ```
 
+![](./images/Screenshot%202024-06-09%20022530.png)
+
 - **--mount type=volume,dst=/library/PoEAA**: Creates an anonymous volume mounted at /library/PoEAA.
 - **--mount type=bind,src=/tmp,dst=/library/DSL**: Creates a bind mount from /tmp on the host to /library/DSL in the container.
 
@@ -141,6 +173,8 @@ docker run --name reader \
     alpine:latest ls -l /library/
 ```
 
+![](./images/Screenshot%202024-06-09%20022549.png)
+
 - **--volumes-from fowler**: Copies the mount points from the container "fowler".
 - **--volumes-from knuth**: Copies the mount points from the container "knuth".
 - **ls -l /library/**: Lists the contents of the /library/ directory.
@@ -150,9 +184,74 @@ docker run --name reader \
 Check the volumes of the new container.
 
 ```sh
-docker inspect --format "{{json .Mounts}}" reader
+docker inspect --format "{{json .Mounts}}" reader | jq .
 ```
 
+*Expected Output:* (Make sure to install `jq` command-line tool if you want to format the JSON output in a prettier way)
+
+```sh
+root@ubuntu-l9r7bi-6c84595885-r9psx:~# docker inspect --format '{{json .Mounts}}' reader | jq .
+[
+  {
+    "Type": "volume",
+    "Name": "4ae7315ea8b5f9b23924acdcae611a9cb9513e7b82241aff3f855a8c98c5cc1d",
+    "Source": "/var/lib/docker/volumes/4ae7315ea8b5f9b23924acdcae611a9cb9513e7b82241aff3f855a8c98c5cc1d/_data",
+    "Destination": "/library/TAoCP.vol3",
+    "Driver": "local",
+    "Mode": "",
+    "RW": true,
+    "Propagation": ""
+  },
+  {
+    "Type": "volume",
+    "Name": "93a5d377e77adf55b5b95984530e2a1d59d26de0c401b54088ddf4a9e65a9690",
+    "Source": "/var/lib/docker/volumes/93a5d377e77adf55b5b95984530e2a1d59d26de0c401b54088ddf4a9e65a9690/_data",
+    "Destination": "/library/TAoCP.vol4.a",
+    "Driver": "local",
+    "Mode": "",
+    "RW": true,
+    "Propagation": ""
+  },
+  {
+    "Type": "volume",
+    "Name": "cdbd2053a43ad76d4aa28d92f2ccef9484e510f3625b69238a750af012eea29c",
+    "Source": "/var/lib/docker/volumes/cdbd2053a43ad76d4aa28d92f2ccef9484e510f3625b69238a750af012eea29c/_data",
+    "Destination": "/library/TAoCP.vol1",
+    "Driver": "local",
+    "Mode": "",
+    "RW": true,
+    "Propagation": ""
+  },
+  {
+    "Type": "volume",
+    "Name": "7d2377f4131a26dab218d41d747118a85252c55a28c28e2f251d92d78e650677",
+    "Source": "/var/lib/docker/volumes/7d2377f4131a26dab218d41d747118a85252c55a28c28e2f251d92d78e650677/_data",
+    "Destination": "/library/PoEAA",
+    "Driver": "local",
+    "Mode": "",
+    "RW": true,
+    "Propagation": ""
+  },
+  {
+    "Type": "bind",
+    "Source": "/tmp",
+    "Destination": "/library/DSL",
+    "Mode": "",
+    "RW": true,
+    "Propagation": "rprivate"
+  },
+  {
+    "Type": "volume",
+    "Name": "f98e69944b403f6e5e6e197a2ed5fb89e0e6ac30175a7b3565309b623ba6fecd",
+    "Source": "/var/lib/docker/volumes/f98e69944b403f6e5e6e197a2ed5fb89e0e6ac30175a7b3565309b623ba6fecd/_data",
+    "Destination": "/library/TAoCP.vol2",
+    "Driver": "local",
+    "Mode": "",
+    "RW": true,
+    "Propagation": ""
+  }
+]
+```
 - **docker inspect**: Provides detailed information about Docker objects.
 - **--format "{{json .Mounts}}"**: Formats the output to show the mounts of the container.
 
